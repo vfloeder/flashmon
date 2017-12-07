@@ -182,13 +182,13 @@ int fmon_insert_event(fmon_access_type event, uint64_t address)
  * \fn ssize_t procfile_flashmon_log_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
  * \fn /proc/flashmon_log read function
  */
-ssize_t procfile_flashmon_log_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
+ssize_t procfile_flashmon_log_read(struct file *file, char __user *ubuf, size_t size, loff_t *ppos)
 {
   int bytes_read, line_len, ok;
   static int fini = 0;
   char line[128];
   fmon_log_entry *cur;
-  
+  char *buf=kzalloc(size,0);
   /* Log vide ? */
   if(fmon_log_is_empty())
     return 0;
@@ -256,6 +256,11 @@ ssize_t procfile_flashmon_log_read(struct file *file, char __user *buf, size_t s
     
   }
   
+  if( copy_to_user(ubuf,buf,size) != 0 )
+  {
+      bytes_read=0;
+  }
+  kfree(buf);
   return bytes_read;
 }
 

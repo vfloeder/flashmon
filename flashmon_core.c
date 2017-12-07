@@ -42,6 +42,7 @@
 #include <linux/signal.h>
 #include <linux/pid.h>		/* userpace process task struct */
 #include <linux/string.h>
+#include <linux/slab.h>     /* kzalloc */
 #include <asm/uaccess.h>
 #include <linux/mtd/partitions.h>
 
@@ -696,14 +697,12 @@ static int __init mod_init(void)
  * \return 1 When read is complete
  * \brief /proc entry read function
  */
-ssize_t procfile_flashmon_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
+ssize_t procfile_flashmon_read(struct file *file, char __user *ubuf, size_t size, loff_t *ppos)
 {
 	int i, ret;
 	static int fini = 0;
 	ret = 0;
-	
-	/* Cleanup the buffer */
-	memset(buf, 0x00, size);
+	char *buf=kzalloc(size,0);
 	
 	for(i=*(ppos); (i<BLOCK_NUM) && (ret < (size-6)); i++)
 		ret = sprintf(buf, "%s%u %u %u\n", buf, read_tab[i], write_tab[i], erase_tab[i]);
@@ -713,7 +712,8 @@ ssize_t procfile_flashmon_read(struct file *file, char __user *buf, size_t size,
 	
 	if(ret == 0)
 		fini=0;
-	
+	ret=copy_to_user(ubuf,buf,size);
+	kfree(buf);
 	return ret;
 }
 
