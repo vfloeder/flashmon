@@ -726,20 +726,25 @@ static int __init mod_init(void)
  */
 ssize_t procfile_flashmon_read(struct file *file, char __user *ubuf, size_t size, loff_t *ppos)
 {
-	int i, ret;
+	int i, ret=0;
 	static int fini = 0;
-	ret = 0;
+
 	char *buf=kzalloc(size,0);
 	
-	for(i=*(ppos); (i<BLOCK_NUM) && (ret < (size-6)); i++)
-		ret = sprintf(buf, "%s%u %u %u\n", buf, read_tab[i], write_tab[i], erase_tab[i]);
+  for(i=*(ppos); (i<BLOCK_NUM) && (ret < (size-6)); i++)
+    ret += sprintf(buf, "%sBLK %05d R=%06u W=%06u E=%06u\n", buf, i, read_tab[i], write_tab[i], erase_tab[i]);
 	
 	*(ppos)=i;
 	fini++;
 	
 	if(ret == 0)
 		fini=0;
-	ret=copy_to_user(ubuf,buf,size);
+
+  if( copy_to_user(ubuf,buf,size) != 0 )
+  {
+      ret=0;
+  }
+
 	kfree(buf);
 	return ret;
 }
