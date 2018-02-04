@@ -43,7 +43,15 @@
 #include <linux/pid.h>		/* userpace process task struct */
 #include <linux/string.h>
 #include <linux/slab.h>     /* kzalloc */
+
+#include <linux/version.h>
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0))
 #include <asm/uaccess.h>
+#else
+#include <linux/uaccess.h>
+#endif
+
 #include <linux/mtd/partitions.h>
 
 #include "flashmon.h"
@@ -154,7 +162,11 @@ struct file_operations fops_flashmon =
 };
 
 static int jgeneric_read_page(struct mtd_info *mtd, struct nand_chip *chip,
-			uint8_t *buf, int page)
+			uint8_t *buf, 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) 
+      int oob_required,
+#endif
+      int page)
 {
 	loff_t from = page * NAND_PAGE_SIZE;
 	int block = page / PAGE_PER_BLOCK;
@@ -193,7 +205,11 @@ static int jgeneric_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 }
 
 static int jgeneric_write_page(struct mtd_info *mtd, struct nand_chip *chip,
-			const uint8_t *buf, int page, int cached, int raw)
+			const uint8_t *buf, 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) 
+      int oob_required,
+#endif
+      int page, int cached, int raw)
 {
 	loff_t to = page * NAND_PAGE_SIZE;
 	int block = page / PAGE_PER_BLOCK;
@@ -282,7 +298,13 @@ static int jnand_read_oob(struct mtd_info *mtd, loff_t from,
 {
 	int first_page_hit, last_page_hit, nb_pages_hit, i, block;
 	uint64_t tmp;
-	struct nand_chip *chip = mtd->priv;
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0))   
+  struct nand_chip *chip = mtd->priv;
+#else
+  struct nand_chip *chip = mtd_to_nand(mtd);
+#endif
+
 	size_t len;
 	
 	if(ops->datbuf == NULL)
@@ -346,7 +368,12 @@ static int jnand_read(struct mtd_info *mtd, loff_t from, size_t len,
 {
 	int first_page_hit, last_page_hit, nb_pages_hit, i, block;
 	uint64_t tmp;
-	struct nand_chip *chip = mtd->priv;
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0))   
+  struct nand_chip *chip = mtd->priv;
+#else
+  struct nand_chip *chip = mtd_to_nand(mtd);
+#endif
 	
   if(!flashmon_enabled)
   {

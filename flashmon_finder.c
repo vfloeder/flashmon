@@ -51,7 +51,12 @@ int find_funcs(unsigned int *readfunc, unsigned int *writefunc, unsigned int *er
 	part = PART(child);
 	master = part->master;
 	put_mtd_device(child);
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)) 
 	chip = master->priv;
+#else
+  chip = mtd_to_nand(master);
+#endif
 	
 	if(chip == NULL)
 	{
@@ -62,14 +67,21 @@ int find_funcs(unsigned int *readfunc, unsigned int *writefunc, unsigned int *er
 /* TODO rewrite all this mess */
   
 #ifdef __LP64__
+
+# if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)) 
 	*writefunc = (int)((uint64_t)chip->write_page);
-	*erasefunc = (int)((uint64_t)master->erase);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32))
+  *erasefunc = (int)((uint64_t)master->erase);
+# else
+  *writefunc = (int)((uint64_t)chip->ecc.write_page);
+  *erasefunc = (int)((uint64_t)master->_erase);
+# endif
+# if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32))
 	*readfunc = (int)((uint64_t)chip->ecc.read_page);
-#else
+# else
 	*readfunc = (int)master->read;
 	old_read_func = 1;
-#endif /* kernel version */
+# endif /* kernel version */
+
 #else 	/* not LP_64 */
 	*writefunc = (int)chip->write_page;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0))
@@ -89,16 +101,19 @@ int find_funcs(unsigned int *readfunc, unsigned int *writefunc, unsigned int *er
 #endif /* kernel version */
 #endif  /* __LP64__ */
 	
-
-	
 	printk(PRINT_PREF "Read : %x, Write : %x, Erase : %x\n", (unsigned int)*readfunc, (unsigned int)*writefunc, (unsigned int)*erasefunc);
-	
 	if(chip->ecc.read_page == NULL)
 	{
 		printk(PRINT_PREF "Error finding flash read function\n");
 		return -1;
 	}
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)) 
 	if(chip->write_page == NULL)
+#else
+	if(chip->ecc.write_page == NULL)
+#endif
+
 	{
 		printk(PRINT_PREF "Error finding flash write function\n");
 		return -1;

@@ -1,0 +1,3 @@
+*.cmd
+*.ko
+/.tmp_versions/
