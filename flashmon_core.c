@@ -112,6 +112,9 @@ MODULE_PARM_DESC(LOG_MTD_CACHE_HITS, "Log MTD cache hits"); /* todo more info he
 uint64_t traced_part_offset;
 uint64_t traced_part_size;
 
+// you can either read all the details regarding access to each erase-block or an outline (min, max, average)
+int get_details = 0;
+
 /* Prototypes managing /proc entries */
 ssize_t procfile_flashmon_read(struct file *file, char __user *buf, size_t size, loff_t *ppos);
 ssize_t procfile_flashmon_write(struct file *file, const char __user *buf, size_t size, loff_t *ppos);
@@ -717,36 +720,189 @@ static int __init mod_init(void)
 	return 0;
 }
 
+// Some state infos for each Erase Block Operation (read/write/erase)
+
+struct stat_info {
+  uint32_t  minval;               // minimum number applied to this PEB
+  uint32_t  maxval;               // maximum
+  uint32_t  avgval;               // average
+#define STAT_BLOCKS 3
+  int32_t   min3[STAT_BLOCKS];    // a few blocks with minimum operations
+  int32_t   max3[STAT_BLOCKS];    // a few with maximum
+};
+
+// fill statistic information regarding one type of operation (r/w/e)
+
+void fill_stats( struct stat_info* stats, int* table, size_t entries )
+{
+  if( stats && table )
+  {
+    int cnt;
+    int min_block_cnt = 0;
+    int max_block_cnt = 0;
+
+    uint32_t actval;
+    uint64_t total = 0;
+
+    stats->minval = 0xFFFFFFFF;
+    stats->maxval = 0;
+    stats->avgval = 0;
+
+    // initialize list of blocks with minimum access counter
+    for( cnt = 0; cnt < STAT_BLOCKS; ++cnt )
+      stats->min3[cnt] = -1;
+
+    // initialize list of blocks with maximum access counter
+    for( cnt = 0; cnt < STAT_BLOCKS; ++cnt )
+      stats->max3[cnt] = -1;
+  
+    // find minimum and maximum access counters
+    for( cnt = 0; cnt < entries; ++cnt )
+    {
+      actval = table[cnt];
+      total += actval;
+      
+      if( actval < stats->minval ) 
+      {
+        stats->minval = actval;
+      }
+      if( actval > stats->maxval )
+      {
+        stats->maxval = actval;
+      }
+    }
+
+    // compute average access
+    stats->avgval = total / entries;
+
+    // build list of blocks with minimum / maximum counters met - just a few...
+    for( cnt = 0; cnt < entries; ++cnt )
+    {
+      actval = table[cnt];
+
+      if( actval == stats->minval && min_block_cnt < STAT_BLOCKS )
+      {
+        stats->min3[min_block_cnt] = cnt;
+        ++min_block_cnt;
+      }
+
+      if( actval == stats->maxval && max_block_cnt < STAT_BLOCKS )
+      {
+        stats->max3[max_block_cnt] = cnt;
+        ++max_block_cnt;
+      }
+    }
+  }
+}
+
 /**
  * \fn ssize_t procfile_flashmon_read(struct file *file, 
- * 		char __user *buf, size_t size, loff_t *ppos)
+ *    char __user *buf, size_t size, loff_t *ppos)
  * \param buf User buffer to fill
- * \return 1 When read is complete
  * \brief /proc entry read function
  */
+
 ssize_t procfile_flashmon_read(struct file *file, char __user *ubuf, size_t size, loff_t *ppos)
 {
-	int i, ret=0;
-	static int fini = 0;
-
 	char *buf=kzalloc(size,0);
-	
-  for(i=*(ppos); (i<BLOCK_NUM) && (ret < (size-6)); i++)
-    ret += sprintf(buf, "%sBLK %05d R=%06u W=%06u E=%06u\n", buf, i, read_tab[i], write_tab[i], erase_tab[i]);
-	
-	*(ppos)=i;
-	fini++;
-	
-	if(ret == 0)
-		fini=0;
+	int space_available = size;
+  int bytes_written = 0;
+  int i = 0;
 
-  if( copy_to_user(ubuf,buf,size) != 0 )
+  memset(buf, 0x00, size);
+
+  if( ! get_details ) 
+  { 
+    // line looks like:
+    // RMIN=0987654321 BLK=000021 000321 000621\n : 4 + 1 + 10 + 1 + 4 + 7 + 7 + 7 = 41
+    // RMAX=                                      : 4 + 1 + 10 + 1 + 4 + 7 + 7 + 7 = 41
+    // RAVG=1234567890\n                          : 4 + 1 + 10 + 1 = 16
+    // WMIN
+    // WMAX=...
+    // WAVG
+    // EMIN
+    // EMAX=...
+    // EAVG
+
+    const int needed_4_line = 98 * 3;
+
+    if( *ppos == 0 ) 
+    {
+      struct stat_info read_stats;
+      struct stat_info write_stats;
+      struct stat_info erase_stats;
+
+      fill_stats(&read_stats,  read_tab,  BLOCK_NUM);
+      fill_stats(&write_stats, write_tab, BLOCK_NUM);
+      fill_stats(&erase_stats, erase_tab, BLOCK_NUM);
+
+
+      if( space_available >= needed_4_line )
+      {
+        int current_len = 0;
+
+        sprintf(buf, "%sRMIN=%010u BLK=%6d %6d %6d\n", buf, read_stats.minval, read_stats.min3[0], read_stats.min3[1], read_stats.min3[2]);
+        sprintf(buf, "%sRMAX=%010u BLK=%6d %6d %6d\n", buf, read_stats.maxval, read_stats.max3[0], read_stats.max3[1], read_stats.max3[2]);
+        sprintf(buf, "%sRAVG=%010u\n", buf, read_stats.avgval);
+
+        sprintf(buf, "%sWMIN=%010u BLK=%6d %6d %6d\n", buf, write_stats.minval, write_stats.min3[0], write_stats.min3[1], write_stats.min3[2]);
+        sprintf(buf, "%sWMAX=%010u BLK=%6d %6d %6d\n", buf, write_stats.maxval, write_stats.max3[0], write_stats.max3[1], write_stats.max3[2]);
+        sprintf(buf, "%sWAVG=%010u\n", buf, write_stats.avgval);
+
+        sprintf(buf, "%sEMIN=%010u BLK=%6d %6d %6d\n", buf, erase_stats.minval, erase_stats.min3[0], erase_stats.min3[1], erase_stats.min3[2]);
+        sprintf(buf, "%sEMAX=%010u BLK=%6d %6d %6d\n", buf, erase_stats.maxval, erase_stats.max3[0], erase_stats.max3[1], erase_stats.max3[2]);
+        current_len = sprintf(buf, "%sEAVG=%010u\n", buf, erase_stats.avgval);
+
+        space_available -= current_len;
+        bytes_written   += current_len;
+        ++i;
+      }
+
+      *ppos = bytes_written;
+     
+    }
+    else
+    {
+      *ppos = 0;
+      bytes_written = 0;
+    } 
+  }
+  else 
   {
-      ret=0;
+    // line looks like:
+    // BLK 03801 R=000064 W=000000 E=000001 : 4 + 6 + 3*9
+
+    const int needed_4_line = 4 + 6 + 3 * 9;
+    
+    bytes_written  = 0;
+
+    i = *ppos;
+
+    while( (i < BLOCK_NUM) && bytes_written < (space_available - needed_4_line) )
+    {
+      bytes_written  = sprintf(buf, "%sBLK %05d R=%06u W=%06u E=%06u\n", buf, i, read_tab[i], write_tab[i], erase_tab[i]);
+      
+      ++i;
+    }
+  }
+  	
+  if( bytes_written && copy_to_user(ubuf,buf,size) != 0 )
+  {
+      bytes_written=0;
   }
 
+  if( !bytes_written )
+  {
+    *(ppos)=0;
+  }
+  else
+  {
+    *(ppos)=i;
+  }
+  
+ // if(bytes_written) ++bytes_written;
 	kfree(buf);
-	return ret;
+	return bytes_written;
 }
 
 /**
@@ -835,6 +991,14 @@ ssize_t procfile_flashmon_write(struct file *file, const char __user *buf, size_
     flashmon_enabled = 0;
 		if(LOG_MODE>0)
 			fmon_log_disable();
+  }
+  else if(!strncmp(received, "details", strlen("details")))
+  {
+    get_details = 1;
+  }
+  else if(!strncmp(received, "outline", strlen("outline")))
+  {
+    get_details = 0;
   }
   else
   {
