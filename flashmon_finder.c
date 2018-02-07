@@ -68,19 +68,21 @@ int find_funcs(unsigned int *readfunc, unsigned int *writefunc, unsigned int *er
   
 #ifdef __LP64__
 
-# if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)) 
-	*writefunc = (int)((uint64_t)chip->write_page);
-  *erasefunc = (int)((uint64_t)master->erase);
-# else
+//# if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)) 
+//	*writefunc = (int)((uint64_t)chip->write_page);
+//  *erasefunc = (int)((uint64_t)master->erase);
+//# else
   *writefunc = (int)((uint64_t)chip->ecc.write_page);
   *erasefunc = (int)((uint64_t)master->_erase);
-# endif
-# if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32))
-	*readfunc = (int)((uint64_t)chip->ecc.read_page);
-# else
-	*readfunc = (int)master->read;
-	old_read_func = 1;
-# endif /* kernel version */
+  *readfunc = (int)((uint64_t)master->_read);
+  old_read_func = 1;
+//# endif
+//# if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32))
+//	*readfunc = (int)((uint64_t)chip->ecc.read_page);
+//# else
+//	*readfunc = (int)master->read;
+//	old_read_func = 1;
+//# endif /* kernel version */
 
 #else 	/* not LP_64 */
 	*writefunc = (int)chip->write_page;

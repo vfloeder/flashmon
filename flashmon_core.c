@@ -217,7 +217,7 @@ static int jgeneric_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 	loff_t to = page * NAND_PAGE_SIZE;
 	int block = page / PAGE_PER_BLOCK;
 	
-	if(!flashmon_enabled)
+  if(!flashmon_enabled)
   {
     jprobe_return();
     return 0;
@@ -309,7 +309,7 @@ static int jnand_read_oob(struct mtd_info *mtd, loff_t from,
 #endif
 
 	size_t len;
-	
+
 	if(ops->datbuf == NULL)
 	{
 		jprobe_return();
@@ -377,7 +377,7 @@ static int jnand_read(struct mtd_info *mtd, loff_t from, size_t len,
 #else
   struct nand_chip *chip = mtd_to_nand(mtd);
 #endif
-	
+
   if(!flashmon_enabled)
   {
     jprobe_return();
