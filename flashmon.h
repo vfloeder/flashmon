@@ -29,6 +29,17 @@
 
 #define PRINT_PREF          KERN_INFO "Flashmon : "
 
+#define P_TRACE /* printk(PRINT_PREF "%s %d traced\n", __FUNCTION__, __LINE__); */
+
+
+#ifdef __LP64__
+# define INTCAST(expr)    (int)((uint64_t)(expr))
+# define VOIDPNT(addr)    (void *)(0xffffffff00000000 | addr)
+#else
+# define INTCAST(expr)    (int)(expr)
+# define VOIDPNT(addr)    (void *)(addr)
+#endif
+
 /* Struct coming from mtd */
 struct mtd_part {
 	struct mtd_info mtd;

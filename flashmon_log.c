@@ -168,12 +168,13 @@ int fmon_log_is_empty(void)
  * \param event Type of the event (R/W/E)
  * \param address Address target (flash page read / written number, block number for erase
  */
-int fmon_insert_event(fmon_access_type event, uint64_t address)
+int fmon_insert_event(fmon_access_type event, uint32_t block, uint32_t page)
 {
   getnstimeofday(&(log.elems[log.end].timestamp));
   
   log.elems[log.end].type = event;
-  log.elems[log.end].address = address;
+  log.elems[log.end].block = block;
+  log.elems[log.end].page = page;
   
   if(log.log_task)
     strcpy(log.elems[log.end].task_name, current->comm);
@@ -228,12 +229,16 @@ ssize_t procfile_flashmon_log_read(struct file *file, char __user *ubuf, size_t 
       sprintf(line, "%s%s", line, "E;");
     else if(cur->type == FMON_READ)
       sprintf(line, "%s%s", line, "R;");
+    else if(cur->type == FMON_READ_OOB)
+      sprintf(line, "%s%s", line, "r;");
     else if(cur->type == FMON_WRITE)
       sprintf(line, "%s%s", line, "W;");
+    else if(cur->type == FMON_WRITE_OOB)
+      sprintf(line, "%s%s", line, "w;");
     else if(cur->type == FMON_MTD_CACHEHIT)
       sprintf(line, "%s%s", line, "C;");
       
-    sprintf(line, "%s%u", line, cur->address);
+    sprintf(line, "%s%u:%u", line, cur->block, cur->page);
     
     if(log.log_task)
       sprintf(line, "%s;%s", line, cur->task_name);
@@ -300,7 +305,7 @@ ssize_t procfile_flashmon_log_write(struct file *file, const char __user *buf, s
   }
   else if(!strncmp(received, "marker", strlen("marker")))
   {
-    fmon_insert_event(FMON_MARKER, 0);
+    fmon_insert_event(FMON_MARKER, 0, 0);
   }
   else
   {

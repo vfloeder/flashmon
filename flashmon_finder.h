@@ -28,6 +28,6 @@
 #ifndef FLASHMON_FINDER_H
 #define FLASHMON_FINDER_H
 
-int find_funcs(unsigned int *readfunc, unsigned int *writefunc, unsigned int *erasefunc);
+int find_funcs(unsigned int *g_readfunc, unsigned int *g_writefunc, unsigned int *readfunc, unsigned int *writefunc, unsigned int *erasefunc);
 
 #endif /* FLASHMON_FINDER_H */

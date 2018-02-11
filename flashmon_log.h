@@ -32,7 +32,9 @@
 typedef enum
 {
   FMON_READ,
+  FMON_READ_OOB,
   FMON_WRITE,
+  FMON_WRITE_OOB,
   FMON_ERASE,
   FMON_MTD_CACHEHIT,
   FMON_MARKER,
@@ -44,7 +46,8 @@ typedef struct s_fmon_log_entry
 {
   struct timespec timestamp;
   fmon_access_type type;
-  uint32_t address;
+  uint32_t block;
+  uint32_t page;
   char *task_name;
 } fmon_log_entry;
 
@@ -63,7 +66,7 @@ ssize_t procfile_flashmon_log_read(struct file *file, char __user *buf, size_t s
 ssize_t procfile_flashmon_log_write(struct file *file, const char __user *buf, size_t size, loff_t *ppos);
 int procfile_flashmon_log_open(struct inode *inode, struct file *filp);
 int procfile_flashmon_log_close(struct inode *inode, struct file *filp);
-int fmon_insert_event(fmon_access_type event, uint64_t address);
+int fmon_insert_event(fmon_access_type event, uint32_t block, uint32_t page);
 int fmon_log_init(int size_max, int log_task);
 int fmon_log_exit(void);
 int fmon_log_reset(void);

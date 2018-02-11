@@ -32,7 +32,7 @@
 #include "flashmon.h"
 #include "flashmon_finder.h"
 
-int find_funcs(unsigned int *readfunc, unsigned int *writefunc, unsigned int *erasefunc)
+int find_funcs(unsigned int *g_readfunc, unsigned int *g_writefunc, unsigned int *readfunc, unsigned int *writefunc, unsigned int *erasefunc)
 {
 	struct mtd_info *child, *master;
 	struct mtd_part *part;
@@ -66,15 +66,19 @@ int find_funcs(unsigned int *readfunc, unsigned int *writefunc, unsigned int *er
 	
 /* TODO rewrite all this mess */
   
-#ifdef __LP64__
+
 
 //# if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)) 
 //	*writefunc = (int)((uint64_t)chip->write_page);
 //  *erasefunc = (int)((uint64_t)master->erase);
 //# else
-  *writefunc = (int)((uint64_t)chip->ecc.write_page);
-  *erasefunc = (int)((uint64_t)master->_erase);
-  *readfunc = (int)((uint64_t)master->_read);
+  ////////*g_writefunc = (int)((uint64_t)chip->ecc.write_page);
+
+	*g_readfunc = INTCAST(chip->ecc.read_page);
+  *g_writefunc = INTCAST(chip->ecc.write_page);
+  *writefunc = INTCAST(master->_write);
+  *erasefunc = INTCAST(master->_erase);
+  *readfunc = INTCAST(master->_read);
   old_read_func = 1;
 //# endif
 //# if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32))
@@ -84,24 +88,7 @@ int find_funcs(unsigned int *readfunc, unsigned int *writefunc, unsigned int *er
 //	old_read_func = 1;
 //# endif /* kernel version */
 
-#else 	/* not LP_64 */
-	*writefunc = (int)chip->write_page;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0))
-	*erasefunc = (int)master->_erase;
-#else
-	*erasefunc = (int)master->erase;
-#endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32))
-	*readfunc = (int)chip->ecc.read_page;
-#else
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0))
-	*readfunc = (int)master->_read;
-#else
-	*readfunc = (int)master->read;
-#endif
-	old_read_func = 1;
-#endif /* kernel version */
-#endif  /* __LP64__ */
+
 	
 	printk(PRINT_PREF "Read : %x, Write : %x, Erase : %x\n", (unsigned int)*readfunc, (unsigned int)*writefunc, (unsigned int)*erasefunc);
 	if(chip->ecc.read_page == NULL)

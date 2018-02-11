@@ -173,7 +173,10 @@ static int jgeneric_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 {
 	loff_t from = page * NAND_PAGE_SIZE;
 	int block = page / PAGE_PER_BLOCK;
-	
+	int rel_page = page % PAGE_PER_BLOCK;
+
+  P_TRACE
+
   if(!flashmon_enabled)
   {
     jprobe_return();
@@ -193,14 +196,14 @@ static int jgeneric_read_page(struct mtd_info *mtd, struct nand_chip *chip,
   if(page == chip->pagebuf)
   {
     if(LOG_MTD_CACHE_HITS)
-      fmon_insert_event(FMON_MTD_CACHEHIT, (uint64_t)page);
+      fmon_insert_event(FMON_MTD_CACHEHIT, (uint32_t)block, (uint32_t)rel_page);
     jprobe_return();
     return 0;
   }
   
 	read_tab[block]++;
 		if(LOG_MODE && fmon_log_get_state())
-			fmon_insert_event(FMON_READ, (uint64_t)page);
+			fmon_insert_event(FMON_READ, (uint32_t)block, (uint32_t)rel_page);
 	
 	fire_signal();
 	jprobe_return();
@@ -216,7 +219,10 @@ static int jgeneric_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 {
 	loff_t to = page * NAND_PAGE_SIZE;
 	int block = page / PAGE_PER_BLOCK;
-	
+	int rel_page = page % PAGE_PER_BLOCK;
+
+  P_TRACE
+
   if(!flashmon_enabled)
   {
     jprobe_return();
@@ -236,62 +242,142 @@ static int jgeneric_write_page(struct mtd_info *mtd, struct nand_chip *chip,
   write_tab[block]++;
   
   if(LOG_MODE && fmon_log_get_state())
-			fmon_insert_event(FMON_WRITE, (uint64_t)page);
+			fmon_insert_event(FMON_WRITE, (uint32_t)block, (uint32_t)rel_page);
   
   fire_signal();
 	jprobe_return();
 	return 0;
 }
+
+
+static int jnand_write_oob(struct mtd_info *mtd, loff_t to,
+  struct mtd_oob_ops *ops)
+{
+  int first_page_hit, last_page_hit, nb_pages_hit, i, block;
+  int rel_page;
+
+  uint64_t tmp;
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0))   
+  struct nand_chip *chip = mtd->priv;
+#else
+  struct nand_chip *chip = mtd_to_nand(mtd);
+#endif
+
+  size_t len;
+
+  P_TRACE
+
+  if(ops->datbuf == NULL)
+  {
+    jprobe_return();
+    return 0;
+  }
+  
+  if(!flashmon_enabled)
+  {
+    jprobe_return();
+    return 0;
+  }
+  
+  if(TRACED_PART != -1)
+  {
+    int traced_part_hit = (to >= traced_part_offset) && (to < (traced_part_offset+traced_part_size));
+    if(!traced_part_hit)
+    {
+      jprobe_return();
+      return 0;
+    }
+  } 
+  
+  /* Set the length */
+  len = ops->len;
+  
+  /* compute first page hit */
+  tmp = to;
+  do_div(tmp, NAND_PAGE_SIZE);
+  first_page_hit = (int)tmp;
+  
+  /* compute last page hit */
+  tmp = to + len - 1;
+  do_div(tmp, NAND_PAGE_SIZE);
+  last_page_hit = (int)tmp;
+  
+  /* compute num. of page hit */
+  nb_pages_hit = last_page_hit - first_page_hit + 1;
+  
+  for(i=0; i<nb_pages_hit; i++)
+  {
+    int page = first_page_hit+i;
+    /* is the page in the page buffer ? */
+    if (page == chip->pagebuf)
+      continue;
+    block=page/PAGE_PER_BLOCK;
+    rel_page=page % PAGE_PER_BLOCK;
+//    write_tab[block]++;
+    if(LOG_MODE && fmon_log_get_state())
+      fmon_insert_event(FMON_WRITE_OOB, (uint32_t)block, (uint32_t)rel_page);
+  }
+  
+  fire_signal();
+
+  jprobe_return();
+  return 0; 
+}
+
+static int jnand_write (struct mtd_info * mtd, loff_t to, size_t len, 
+	size_t * retlen, const u_char * buf)
+{
+	int first_page_hit, last_page_hit, nb_pages_hit, i, block;
+	uint64_t tmp;
+	int rel_page;
+
+  P_TRACE
+
+  if(!flashmon_enabled)
+  {
+    jprobe_return();
+    return 0;
+  }
 	
-//~ static int jnand_write (struct mtd_info * mtd, loff_t to, size_t len, 
-	//~ size_t * retlen, const u_char * buf)
-//~ {
-	//~ int first_page_hit, last_page_hit, nb_pages_hit, i, block;
-	//~ uint64_t tmp;
-	//~ 
-  //~ if(!flashmon_enabled)
-  //~ {
-    //~ jprobe_return();
-    //~ return 0;
-  //~ }
-	//~ 
-	//~ if(TRACED_PART != -1)
-	//~ {
-		//~ int traced_part_hit = (to >= traced_part_offset) && (to < (traced_part_offset+traced_part_size));
-		//~ if(!traced_part_hit)
-		//~ {
-			//~ jprobe_return();
-			//~ return 0;
-		//~ }
-	//~ }
-	//~ 
-	//~ /* compute first page hit */
-	//~ tmp = to;
-	//~ do_div(tmp, NAND_PAGE_SIZE);
-	//~ first_page_hit = (int)tmp;
-	//~ 
-	//~ /* compute last page hit */
-	//~ tmp = to + len - 1;
-	//~ do_div(tmp, NAND_PAGE_SIZE);
-	//~ last_page_hit = (int)tmp;
-	//~ 
-	//~ /* compute num. of page hit */
-	//~ nb_pages_hit = last_page_hit - first_page_hit + 1;
-	//~ 
-	//~ for(i=0; i<nb_pages_hit; i++)
-	//~ {
-		//~ int page = first_page_hit+i;
-		//~ block=page/PAGE_PER_BLOCK;
-		//~ write_tab[block]++;
-		//~ if(LOG_MODE && fmon_log_get_state())
-			//~ fmon_insert_event(FMON_WRITE, (uint64_t)page);
-	//~ }
-	//~ 
-  //~ fire_signal();
-//~ 
-  //~ jprobe_return();
-  //~ return 0;
-//~ }
+	if(TRACED_PART != -1)
+	{
+		int traced_part_hit = (to >= traced_part_offset) && (to < (traced_part_offset+traced_part_size));
+		if(!traced_part_hit)
+		{
+			jprobe_return();
+			return 0;
+		}
+	}
+	
+	/* compute first page hit */
+	tmp = to;
+	do_div(tmp, NAND_PAGE_SIZE);
+	first_page_hit = (int)tmp;
+	
+	/* compute last page hit */
+	tmp = to + len - 1;
+	do_div(tmp, NAND_PAGE_SIZE);
+	last_page_hit = (int)tmp;
+	
+	/* compute num. of page hit */
+	nb_pages_hit = last_page_hit - first_page_hit + 1;
+	
+	for(i=0; i<nb_pages_hit; i++)
+	{
+		int page = first_page_hit+i;
+		block=page/PAGE_PER_BLOCK;
+    rel_page=page % PAGE_PER_BLOCK;
+		write_tab[block]++;
+		if(LOG_MODE && fmon_log_get_state())
+			fmon_insert_event(FMON_WRITE, (uint32_t)block, (uint32_t)rel_page);
+	}
+	
+  fire_signal();
+
+  jprobe_return();
+  return 0;
+}
 
 /**
  * YAFFS2 use nand_read_oob
@@ -300,6 +386,8 @@ static int jnand_read_oob(struct mtd_info *mtd, loff_t from,
 	struct mtd_oob_ops *ops)
 {
 	int first_page_hit, last_page_hit, nb_pages_hit, i, block;
+  int rel_page;
+
 	uint64_t tmp;
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0))   
@@ -310,14 +398,20 @@ static int jnand_read_oob(struct mtd_info *mtd, loff_t from,
 
 	size_t len;
 
+  P_TRACE
+
 	if(ops->datbuf == NULL)
 	{
+    P_TRACE
+
 		jprobe_return();
 		return 0;
 	}
 	
   if(!flashmon_enabled)
   {
+    P_TRACE
+
     jprobe_return();
     return 0;
   }
@@ -327,6 +421,8 @@ static int jnand_read_oob(struct mtd_info *mtd, loff_t from,
 		int traced_part_hit = (from >= traced_part_offset) && (from < (traced_part_offset+traced_part_size));
 		if(!traced_part_hit)
 		{
+      P_TRACE
+
 			jprobe_return();
 			return 0;
 		}
@@ -355,11 +451,15 @@ static int jnand_read_oob(struct mtd_info *mtd, loff_t from,
 		if (page == chip->pagebuf)
 			continue;
 		block=page/PAGE_PER_BLOCK;
-		read_tab[block]++;
-		if(LOG_MODE && fmon_log_get_state())
-			fmon_insert_event(FMON_READ, (uint64_t)page);
+    rel_page=page % PAGE_PER_BLOCK;
+//		read_tab[block]++;
+		if(LOG_MODE && fmon_log_get_state()) 
+    {
+      P_TRACE
+			fmon_insert_event(FMON_READ_OOB, (uint32_t)block, (uint32_t)rel_page);
+    }
 	}
-	
+	P_TRACE
   fire_signal();
 
   jprobe_return();
@@ -370,6 +470,7 @@ static int jnand_read(struct mtd_info *mtd, loff_t from, size_t len,
 		     size_t *retlen, uint8_t *buf)
 {
 	int first_page_hit, last_page_hit, nb_pages_hit, i, block;
+  int rel_page;
 	uint64_t tmp;
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0))   
@@ -377,6 +478,8 @@ static int jnand_read(struct mtd_info *mtd, loff_t from, size_t len,
 #else
   struct nand_chip *chip = mtd_to_nand(mtd);
 #endif
+
+  P_TRACE
 
   if(!flashmon_enabled)
   {
@@ -410,17 +513,20 @@ static int jnand_read(struct mtd_info *mtd, loff_t from, size_t len,
 	for(i=0; i<nb_pages_hit; i++)
 	{
 		int page = first_page_hit+i;
-		/* is the page in the page buffer ? */
+	  block=page/PAGE_PER_BLOCK;
+    rel_page = page % PAGE_PER_BLOCK;
+
+  	/* is the page in the page buffer ? */
 		if (page == chip->pagebuf)
     {
       if(LOG_MTD_CACHE_HITS)
-        fmon_insert_event(FMON_MTD_CACHEHIT, (uint64_t)page);
+        fmon_insert_event(FMON_MTD_CACHEHIT, (uint32_t)block, (uint32_t)rel_page);
       continue;
     }
-		block=page/PAGE_PER_BLOCK;
+//		block=page/PAGE_PER_BLOCK;
 		read_tab[block]++;
 		if(LOG_MODE && fmon_log_get_state())
-			fmon_insert_event(FMON_READ, (uint64_t)page);
+			fmon_insert_event(FMON_READ, (uint32_t)block, (uint32_t)rel_page);
 	}
 	
   fire_signal();
@@ -439,6 +545,8 @@ static int jnand_erase(struct mtd_info *mtd, struct erase_info *instr)
 	int addr;
 	int blk_num;
   
+  P_TRACE
+
   if(!flashmon_enabled)
   {
     jprobe_return();
@@ -466,7 +574,7 @@ static int jnand_erase(struct mtd_info *mtd, struct erase_info *instr)
 	  printk(PRINT_PREF "Warning : accessed block %d > %d\n", blk_num, BLOCK_NUM);
 
 	if(LOG_MODE && fmon_log_get_state())
-    fmon_insert_event(FMON_ERASE, (uint64_t)blk_num);
+    fmon_insert_event(FMON_ERASE, (uint32_t)blk_num, 0);
 
 	fire_signal();
 	jprobe_return();
@@ -493,12 +601,32 @@ static struct jprobe my_jprobe_read_oob = {
 
 /* Read page */
 static struct jprobe my_jprobe_read = {
-	.entry = jgeneric_read_page,
+	.entry = jnand_read, //// jgeneric_read_page,
+};
+
+
+/* generic Read page */
+static struct jprobe my_jprobe_g_read = {
+  .entry = jgeneric_read_page,
+};
+
+
+/* Write page with OOB */
+static struct jprobe my_jprobe_write_oob = {
+  .entry      = jnand_write_oob,
+  .kp = {
+    .symbol_name  = "nand_write_oob",
+  },
 };
 
 /* Write page */
 static struct jprobe my_jprobe_write = {
-	.entry = jgeneric_write_page,
+	.entry = jnand_write, //// jgeneric_write_page,
+};
+
+/* generic Write page */
+static struct jprobe my_jprobe_g_write = {
+  .entry = jgeneric_write_page,
 };
 
 /* Erase block */
@@ -519,18 +647,21 @@ static int __init mod_init(void)
   struct mtd_part *part, *part2;
 	struct pid *p;
   uint64_t tmp_blk_num;
-	unsigned int readfunc;
+	unsigned int g_readfunc;
+  unsigned int g_writefunc;
+
+  unsigned int readfunc;
 	unsigned int writefunc;
 	unsigned int erasefunc;
 	
-	printk(PRINT_PREF "Flashmon 2.1 module loading ...\n");
+	printk(PRINT_PREF "Flashmon 2.2 module loading ...\n");
 	printk(PRINT_PREF "===============================\n");
 	
 	/**
 	 * First we try to find the functions involved in flash accesses. The
 	 * "finder" module is in charge of this task (see finder.c)
 	 */
-	old_read_func = find_funcs(&readfunc, &writefunc, &erasefunc);
+	old_read_func = find_funcs(&g_readfunc, &g_writefunc, &readfunc, &writefunc, &erasefunc);
 	if(old_read_func < 0)
 	{
 		printk(PRINT_PREF "Error finder\n");
@@ -538,16 +669,28 @@ static int __init mod_init(void)
 	}
 	
 	/* set jprobe entry addrs */
+
+#if 1
+  my_jprobe_erase.kp.addr   = VOIDPNT(erasefunc);
+  my_jprobe_write.kp.addr   = VOIDPNT(writefunc);
+  my_jprobe_read.kp.addr    = VOIDPNT(readfunc);
+  my_jprobe_g_write.kp.addr = VOIDPNT(g_writefunc);
+  my_jprobe_g_read.kp.addr  = VOIDPNT(g_readfunc);
+#else  
 #ifdef __LP64__
 	my_jprobe_erase.kp.addr = (void *)(0xffffffff00000000 | erasefunc);
 	my_jprobe_write.kp.addr = (void *)(0xffffffff00000000 | writefunc);
 	my_jprobe_read.kp.addr = (void *)(0xffffffff00000000 | readfunc);
+  my_jprobe_g_write.kp.addr = (void *)(0xffffffff00000000 | g_writefunc);
+  my_jprobe_g_read.kp.addr = (void *)(0xffffffff00000000 | g_readfunc);
 #else
 	my_jprobe_erase.kp.addr = (void *)erasefunc;
 	my_jprobe_write.kp.addr = (void *)writefunc;
 	my_jprobe_read.kp.addr = (void *)readfunc;
 #endif
-	
+#endif
+
+#if 0	
 	/* old version of read_page_hwecc & co, fallback to nand_read_page */
 	if(old_read_func == 1)
   {
@@ -555,7 +698,8 @@ static int __init mod_init(void)
       "for the probed read function");
 		my_jprobe_read.entry = jnand_read;
   }
-	
+#endif
+
   /* Get infos on traced flash device : */
 	mtd = get_mtd_device(NULL, 0);
 	if(mtd == NULL)
@@ -636,27 +780,59 @@ static int __init mod_init(void)
 	/** fallback to nand_read ? yaffs2 does not use it so put a probe and
 	 * nand_read_oob
 	 */
-	if(old_read_func == 1)
-	{
+	////if(old_read_func == 1)
+	////{
+#if 0
 		ret = register_jprobe(&my_jprobe_read_oob);
 		if (ret < 0) {
 			printk(PRINT_PREF "Error : register_jprobe (read_oob) failed : %d\n", ret);
       fmon_log_exit();
 			return -1;
 		}
-	}
+#endif    
+	////}
+#if 1
+  // This one is needed for UBI
 	ret = register_jprobe(&my_jprobe_read);
 	if (ret < 0) {
 		printk(PRINT_PREF "Error : register_jprobe (read) failed : %d\n", ret);
     fmon_log_exit();
 		return -1;
 	}
+#endif  
+
+#if 1
+  // This one is needed for YAFFS
+  ret = register_jprobe(&my_jprobe_g_read);
+  if (ret < 0) {
+    printk(PRINT_PREF "Error : register_jprobe (g_read) failed : %d\n", ret);
+    fmon_log_exit();
+    return -1;
+  }
+#endif
+
+#if 0
+  ret = register_jprobe(&my_jprobe_write_oob);
+  if (ret < 0) {
+    printk(PRINT_PREF "Error : register_jprobe (write_oob) failed : %d\n", ret);
+    fmon_log_exit();
+    return -1;
+  }
+#endif  
+#if 0
 	ret = register_jprobe(&my_jprobe_write);
 	if (ret < 0) {
 		printk(PRINT_PREF "Error : register_jprobe (write) failed : %d\n", ret);
     fmon_log_exit();
 		return -1;
 	}
+#endif  
+  ret = register_jprobe(&my_jprobe_g_write);
+  if (ret < 0) {
+    printk(PRINT_PREF "Error : register_jprobe (g_write) failed : %d\n", ret);
+    fmon_log_exit();
+    return -1;
+  }
 	ret = register_jprobe(&my_jprobe_erase);
 	if (ret < 0) {
 		printk(PRINT_PREF "Error : register_jprobe (erase) failed : %d\n", ret);
@@ -664,18 +840,27 @@ static int __init mod_init(void)
 		return -1;
 	}
 	
-	if(old_read_func == 1)
-	{
+////	if(old_read_func == 1)
+////	{
 		printk(PRINT_PREF "Read OOB Jprobe on : %p, handler addr : %p\n",
 					 my_jprobe_read_oob.kp.addr, my_jprobe_read_oob.entry);
-	}
+////	}
 	
 	printk(PRINT_PREF "Read Jprobe on : %p, handler addr : %p\n",
 	       my_jprobe_read.kp.addr, my_jprobe_read.entry);
-	       
+	     
+  printk(PRINT_PREF "G_Read Jprobe on : %p, handler addr : %p\n",
+         my_jprobe_g_read.kp.addr, my_jprobe_g_read.entry);
+
+  printk(PRINT_PREF "Write OOB Jprobe on : %p, handler addr : %p\n",
+           my_jprobe_write_oob.kp.addr, my_jprobe_write_oob.entry);
+
 	printk(PRINT_PREF "Write Jprobe on : %p, handler addr : %p\n",
 	       my_jprobe_write.kp.addr, my_jprobe_write.entry);
 	       
+  printk(PRINT_PREF "G_Write Jprobe on : %p, handler addr : %p\n",
+         my_jprobe_g_write.kp.addr, my_jprobe_g_write.entry);
+
 	printk(PRINT_PREF "Erase Jprobe on : %p, handler addr : %p\n",
 	       my_jprobe_erase.kp.addr, my_jprobe_erase.entry);
 	
@@ -912,19 +1097,48 @@ ssize_t procfile_flashmon_read(struct file *file, char __user *ubuf, size_t size
 static void __exit mod_exit(void)
 {
 	/* Remove probes */
-	
-	unregister_jprobe(&my_jprobe_read);
-	unregister_jprobe(&my_jprobe_write);
-	unregister_jprobe(&my_jprobe_erase);
+
+  if (my_jprobe_read.kp.addr != NULL)
+  {	
+	 unregister_jprobe(&my_jprobe_read);
+   printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_read.kp.addr);
+  }
+
+  if (my_jprobe_g_read.kp.addr != NULL)
+  {
+    unregister_jprobe(&my_jprobe_g_read);
+    printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_g_read.kp.addr);
+  }
+
+  if (my_jprobe_write.kp.addr != NULL)
+  {
+  	unregister_jprobe(&my_jprobe_write);
+    printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_write.kp.addr);
+  }
+
+  if (my_jprobe_g_write.kp.addr != NULL)
+  {
+    unregister_jprobe(&my_jprobe_g_write);
+    printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_g_write.kp.addr);
+  }
+
+  if (my_jprobe_erase.kp.addr != NULL)
+  {
+	  unregister_jprobe(&my_jprobe_erase);
+    printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_erase.kp.addr);
+  }
+
 	if (my_jprobe_read_oob.kp.addr != NULL)
 	{
 		unregister_jprobe(&my_jprobe_read_oob);
 		printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_read_oob.kp.addr);
 	}
-	
-	printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_read.kp.addr);
-	printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_write.kp.addr);
-	printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_erase.kp.addr);
+	if (my_jprobe_write_oob.kp.addr != NULL)
+  {
+    unregister_jprobe(&my_jprobe_write_oob);
+    printk(PRINT_PREF "Jprobe on %p removed\n", my_jprobe_write_oob.kp.addr);
+  }
+
 	
 	/* Remove /proc entry */
 	remove_proc_entry(PROCFS_NAME, NULL);
