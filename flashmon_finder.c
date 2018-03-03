@@ -25,9 +25,14 @@
  * flash read, write and erase operations on various platforms
  */
 
-#include <linux/mtd/mtd.h>
-#include <linux/mtd/nand.h>
 #include <linux/version.h>
+#include <linux/mtd/mtd.h>
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0))
+#include <linux/mtd/nand.h>	/* nand_write and nand_read */
+#else
+#include <linux/mtd/rawnand.h>	/* nand_write and nand_read */
+#endif
 
 #include "flashmon.h"
 #include "flashmon_finder.h"

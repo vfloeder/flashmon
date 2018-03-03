@@ -1,3 +1,4 @@
 *.cmd
 *.ko
 /.tmp_versions/
+/.cache.mk

@@ -29,6 +29,7 @@
  * \date 03/22/2013
  */
 
+#include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/kprobes.h>	/* probes */
@@ -37,7 +38,11 @@
 #include <linux/mtd/mtd.h>	/* mtd_info and erase_info structures */
 #include <linux/proc_fs.h>	/* /proc entry */
 #include <linux/fs.h>
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0))
 #include <linux/mtd/nand.h>	/* nand_write and nand_read */
+#else
+#include <linux/mtd/rawnand.h>	/* nand_write and nand_read */
+#endif
 #include <linux/sched.h>	/* userspace signal */
 #include <linux/signal.h>
 #include <linux/pid.h>		/* userpace process task struct */
